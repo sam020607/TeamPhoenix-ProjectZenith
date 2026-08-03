@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback, Fragment, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, Polygon, Circle, useMap, Popup, Pane, GeoJSON, FeatureGroup, useMapEvents } from 'react-leaflet';
+import { useState, useEffect, useRef, useCallback, Fragment, useMemo, createPortal } from 'react';
+import { MapContainer, TileLayer, Marker, Polyline, Polygon, Circle, Rectangle, useMap, Popup, Pane, GeoJSON, FeatureGroup, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { Database, Globe, Radio, MapPin, X, Activity, Navigation, SlidersHorizontal } from 'lucide-react';
 import { useApp } from '../../context/AppContext.jsx';
@@ -9,6 +9,33 @@ import { CONSTELLATIONS, getSubStellarPoint, getLocalCoordinates, getConstellati
 import worldData from '../../data/world.json';
 import { reverseGeocode } from '../../api/geocodeApi.js';
 
+// Expanded debris hotspot catalogue — representative LEO cluster zones
+// Each entry: orbital regime label, lat/lon centroid, intensity 0‑1, spread radius (degrees)
+const DEBRIS_HOTSPOTS = [
+  // Polar belt — heavy traffic from Earth-obs & recon sats
+  { lat: 80.5, lon: 95.0,   intensity: 0.92, radius: 18, label: 'Polar LEO Belt',       color: [255,  40,  40] },
+  { lat: 73.0, lon: -15.0,  intensity: 0.75, radius: 14, label: 'Arctic Crossing',       color: [255,  80,  20] },
+  { lat: -82.0, lon: 55.0,  intensity: 0.70, radius: 14, label: 'Antarctic Corridor',    color: [255,  80,  20] },
+  // Sun-synchronous corridor — Fengyun 1C debris field
+  { lat: 55.0, lon:  90.0,  intensity: 0.88, radius: 20, label: 'FY-1C Debris Field',    color: [255,  30,  30] },
+  { lat: 45.0, lon: 125.0,  intensity: 0.65, radius: 13, label: 'SSO Cascade Zone',      color: [255, 120,  10] },
+  { lat: 35.0, lon: 145.0,  intensity: 0.72, radius: 15, label: 'Japan Launch Track',    color: [255,  90,  10] },
+  // Mid-inclination cluster — Cosmos 2251 collision belt
+  { lat: 51.0, lon: -80.0,  intensity: 0.85, radius: 16, label: 'Cosmos-2251 Cloud',     color: [255,  30,  30] },
+  { lat: 48.0, lon:  35.0,  intensity: 0.60, radius: 12, label: 'Baikonur Uprange',      color: [255, 140,   0] },
+  { lat: 28.5, lon: -80.5,  intensity: 0.58, radius: 11, label: 'KSC Launch Corridor',   color: [255, 160,  20] },
+  // Equatorial / GEO graveyard approach
+  { lat:  5.0, lon: -75.0,  intensity: 0.50, radius:  9, label: 'GTO Crossing Band',     color: [255, 200,  30] },
+  { lat: -5.0, lon: 110.0,  intensity: 0.48, radius:  9, label: 'SEA Equatorial Band',   color: [255, 200,  30] },
+  // Southern hemisphere dense zones
+  { lat: -48.0, lon: -120.0,intensity: 0.55, radius: 11, label: 'South Pacific Zone',    color: [255, 130,  15] },
+  { lat: -35.0, lon:  20.0, intensity: 0.42, radius:  9, label: 'Southern Polar Rim',    color: [255, 200,  40] },
+  // Supplementary secondary clusters
+  { lat: 62.0, lon: -150.0, intensity: 0.68, radius: 13, label: 'Alaska Overpass',       color: [255, 100,  10] },
+  { lat: 20.0, lon:  60.0,  intensity: 0.44, radius:  8, label: 'Arabian Corridor',      color: [255, 220,  50] },
+  { lat: -22.0, lon: -45.0, intensity: 0.38, radius:  8, label: 'Brazil Downrange',      color: [255, 230,  60] },
+];
+
 // Fix Leaflet default icon path issue with Vite
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -16,6 +43,257 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
+
+// ── Thermographic Canvas Heatmap ─────────────────────────────────────────────
+// Palette: [t, alpha, r, g, b] — t is normalized intensity [0,1]
+const THERMO_PAL = [
+  [0.00, 0.00,  0,   0,  160],
+  [0.04, 0.22,  0,   0,  210],
+  [0.10, 0.52,  0,   0,  255],
+  [0.20, 0.68,  0,  100, 255],
+  [0.30, 0.76,  0,  210, 255],
+  [0.38, 0.80,  0,  255, 230],
+  [0.46, 0.83,  0,  255, 100],
+  [0.54, 0.85,  0,  255,  30],
+  [0.62, 0.86, 80,  255,   0],
+  [0.69, 0.87, 200, 255,   0],
+  [0.76, 0.89, 255, 230,   0],
+  [0.83, 0.91, 255, 130,   0],
+  [0.89, 0.93, 255,  45,   0],
+  [0.94, 0.95, 255,   0,   0],
+  [0.97, 0.96, 230,   0,  10],
+  [1.00, 0.97, 180,   0,  20],
+];
+
+function buildThermoLUT() {
+  const LUT = new Uint8ClampedArray(256 * 4);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    // find bracket
+    let lo = THERMO_PAL.length - 2, hi = THERMO_PAL.length - 1;
+    for (let j = 0; j < THERMO_PAL.length - 1; j++) {
+      if (t <= THERMO_PAL[j + 1][0]) { lo = j; hi = j + 1; break; }
+    }
+    const [t0, a0, r0, g0, b0] = THERMO_PAL[lo];
+    const [t1, a1, r1, g1, b1] = THERMO_PAL[hi];
+    const f = (t1 - t0) < 1e-9 ? 1 : (t - t0) / (t1 - t0);
+    LUT[i * 4]     = Math.round(r0 + f * (r1 - r0));
+    LUT[i * 4 + 1] = Math.round(g0 + f * (g1 - g0));
+    LUT[i * 4 + 2] = Math.round(b0 + f * (b1 - b0));
+    LUT[i * 4 + 3] = Math.round((a0 + f * (a1 - a0)) * 255);
+  }
+  return LUT;
+}
+
+const THERMO_LUT = buildThermoLUT();
+
+// React-Leaflet component: renders a thermographic canvas over the map safely via useEffect
+function HeatmapCanvasLayer({ hotspots }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map) return;
+
+    const container = map.getContainer();
+    if (!container) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.style.position = 'absolute';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.zIndex = '450';
+    canvas.style.filter = 'blur(16px)';
+    canvas.style.opacity = '0.50';
+    canvas.style.mixBlendMode = 'screen';
+
+    container.appendChild(canvas);
+
+    const draw = () => {
+      try {
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (!w || !h || w <= 0 || h <= 0) return;
+
+        canvas.width  = w;
+        canvas.height = h;
+
+        // ── Pass 1: accumulate Gaussian intensity blobs (additive 'lighter' blend) ──
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const oc = off.getContext('2d');
+        if (!oc) return;
+        oc.clearRect(0, 0, w, h);
+        oc.globalCompositeOperation = 'lighter';
+
+        hotspots.forEach(({ lat, lon, radius, intensity }) => {
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+          const cp = map.latLngToContainerPoint([lat, lon]);
+          const ep = map.latLngToContainerPoint([lat + radius, lon]);
+          if (!cp || !ep || !Number.isFinite(cp.x) || !Number.isFinite(cp.y) || !Number.isFinite(ep.y)) return;
+          const pr = Math.max(55, Math.abs(ep.y - cp.y) * 2.2);
+          if (!Number.isFinite(pr) || pr <= 0) return;
+          const v  = Math.round(intensity * 210);
+
+          const grd = oc.createRadialGradient(cp.x, cp.y, 0, cp.x, cp.y, pr);
+          grd.addColorStop(0,    `rgba(${v},${v},${v},1)`);
+          grd.addColorStop(0.28, `rgba(${v * 0.78 | 0},${v * 0.78 | 0},${v * 0.78 | 0},1)`);
+          grd.addColorStop(0.55, `rgba(${v * 0.40 | 0},${v * 0.40 | 0},${v * 0.40 | 0},1)`);
+          grd.addColorStop(0.82, `rgba(${v * 0.10 | 0},${v * 0.10 | 0},${v * 0.10 | 0},1)`);
+          grd.addColorStop(1,    'rgba(0,0,0,0)');
+          oc.fillStyle = grd;
+
+          const x0 = Math.max(0, cp.x - pr | 0);
+          const y0 = Math.max(0, cp.y - pr | 0);
+          const x1 = Math.min(w, (cp.x + pr + 1) | 0);
+          const y1 = Math.min(h, (cp.y + pr + 1) | 0);
+          oc.fillRect(x0, y0, x1 - x0, y1 - y0);
+        });
+
+        // ── Pass 2: pixel-by-pixel colour mapping via prebuilt LUT ──
+        const raw = oc.getImageData(0, 0, w, h).data;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const outImg = ctx.createImageData(w, h);
+        const out = outImg.data;
+
+        for (let i = 0; i < raw.length; i += 4) {
+          const idx = raw[i]; // R channel carries accumulated intensity 0-255
+          if (idx < 5) { out[i + 3] = 0; continue; }
+          const li = idx << 2;
+          out[i]     = THERMO_LUT[li];
+          out[i + 1] = THERMO_LUT[li + 1];
+          out[i + 2] = THERMO_LUT[li + 2];
+          out[i + 3] = THERMO_LUT[li + 3];
+        }
+        ctx.putImageData(outImg, 0, 0);
+      } catch (err) {
+        console.warn('Heatmap layer render warning:', err);
+      }
+    };
+
+    draw();
+    map.on('move moveend zoom zoomend resize', draw);
+
+    return () => {
+      map.off('move moveend zoom zoomend resize', draw);
+      if (canvas.parentNode) {
+        canvas.parentNode.removeChild(canvas);
+      }
+    };
+  }, [map, hotspots]);
+
+  return null;
+}
+
+// ── Heatmap Legend overlay ───────────────────────────────────────────────────
+const HEATMAP_TIERS = [
+  { label: 'Critical',  color: 'rgb(255,30,30)',  threshold: '> 0.8' },
+  { label: 'High',      color: 'rgb(255,90,10)',  threshold: '0.6 – 0.8' },
+  { label: 'Moderate',  color: 'rgb(255,160,20)', threshold: '0.4 – 0.6' },
+  { label: 'Sparse',    color: 'rgb(255,230,60)', threshold: '< 0.4' },
+];
+
+function HeatmapLegend({ hotspots }) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  const criticalCount = hotspots.filter(h => h.intensity >= 0.8).length;
+  const highCount     = hotspots.filter(h => h.intensity >= 0.6 && h.intensity < 0.8).length;
+  const modCount      = hotspots.filter(h => h.intensity >= 0.4 && h.intensity < 0.6).length;
+  const sparseCount   = hotspots.filter(h => h.intensity < 0.4).length;
+  const counts        = [criticalCount, highCount, modCount, sparseCount];
+
+  return (
+    <div
+      className="absolute bottom-6 left-3 z-[1000] select-none"
+      style={{ fontFamily: "'Inter', 'system-ui', sans-serif", width: '182px' }}
+    >
+      <div
+        style={{
+          background: 'rgba(7,10,18,0.90)',
+          border: '1px solid rgba(239,68,68,0.22)',
+          borderRadius: '10px',
+          backdropFilter: 'blur(14px)',
+          boxShadow: '0 4px 32px rgba(239,68,68,0.10)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* ── Clickable Header ── */}
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 11px',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            borderBottom: collapsed ? 'none' : '1px solid rgba(255,255,255,0.04)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{
+              width: '6px', height: '6px', borderRadius: '50%',
+              background: '#ef4444', display: 'inline-block',
+              boxShadow: '0 0 6px rgba(239,68,68,0.8)',
+            }} />
+            <span style={{ fontSize: '8px', color: '#ef4444', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.13em' }}>
+              Debris Density Map
+            </span>
+          </div>
+          {/* Chevron */}
+          <svg
+            width="10" height="10" viewBox="0 0 10 10" fill="none"
+            style={{ transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', flexShrink: 0 }}
+          >
+            <path d="M 2 3.5 L 5 6.5 L 8 3.5" stroke="rgba(239,68,68,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+
+        {/* ── Expandable Body ── */}
+        {!collapsed && (
+          <div style={{ padding: '8px 11px 10px' }}>
+            {/* Gradient bar */}
+            <div style={{
+              height: '7px', borderRadius: '4px',
+              background: 'linear-gradient(to right, rgb(255,230,60), rgb(255,160,20), rgb(255,90,10), rgb(255,30,30))',
+              marginBottom: '4px', border: '1px solid rgba(255,255,255,0.05)',
+            }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7px', color: 'rgba(255,255,255,0.3)', marginBottom: '8px' }}>
+              <span>Sparse</span>
+              <span>Critical</span>
+            </div>
+
+            {/* Tier rows */}
+            {HEATMAP_TIERS.map((tier, i) => (
+              <div key={tier.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: i < 3 ? '5px' : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '9px', height: '9px', borderRadius: '50%', background: tier.color, opacity: 0.85, flexShrink: 0 }} />
+                  <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.65)', fontWeight: '500' }}>{tier.label}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ fontSize: '7.5px', color: 'rgba(255,255,255,0.25)', fontFamily: 'monospace' }}>{tier.threshold}</span>
+                  <span style={{ fontSize: '9px', color: tier.color, fontWeight: '700', minWidth: '14px', textAlign: 'right', fontFamily: 'monospace' }}>{counts[i]}</span>
+                </div>
+              </div>
+            ))}
+
+            {/* Total */}
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.04)', marginTop: '8px', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Zones</span>
+              <span style={{ fontSize: '11px', color: 'white', fontWeight: '700', fontFamily: 'monospace' }}>{hotspots.length}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 const CITY_LIGHTS = [
   // North America
@@ -469,7 +747,8 @@ export default function GlobeMap({ className = '', mobileView = 'map', showChrom
     asteroidFilter,
     theme,
     issNextPasses = [],
-    showMapDetailCard
+    showMapDetailCard,
+    showDebrisHeatmap
   } = state;
 
   const [isRelocating, setIsRelocating] = useState(false);
@@ -618,7 +897,7 @@ export default function GlobeMap({ className = '', mobileView = 'map', showChrom
     : null;
 
   return (
-    <div className={`relative ${className} ${isRelocating ? 'relocating-map' : ''}`}>
+    <div className={`relative w-full h-full ${className} ${isRelocating ? 'relocating-map' : ''}`}>
       <MapContainer
         center={location ? [location.lat, location.lon] : [20, 0]}
         zoom={location ? 4 : 2}
@@ -733,6 +1012,9 @@ export default function GlobeMap({ className = '', mobileView = 'map', showChrom
             })}
           </FeatureGroup>
         )}
+
+        {/* Debris Density Heatmap — thermographic canvas layer (rendered outside MapContainer via portal) */}
+        {showDebrisHeatmap && <HeatmapCanvasLayer hotspots={DEBRIS_HOTSPOTS} />}
 
         {/* Observer location marker */}
         {location && (
@@ -1032,6 +1314,18 @@ export default function GlobeMap({ className = '', mobileView = 'map', showChrom
               <span>{isRelocating ? 'Click Map' : 'Relocate'}</span>
             </button>
             
+            <button
+              onClick={actions.toggleDebrisHeatmap}
+              className={`glass-panel flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface/90 backdrop-blur border transition-all text-[10px] font-sans font-bold uppercase tracking-wider shadow-lg pointer-events-auto cursor-pointer
+                ${showDebrisHeatmap 
+                  ? 'border-red-500/40 text-red-400 bg-red-500/10 shadow-[0_0_10px_rgba(239,68,68,0.2)]' 
+                  : 'border-surface-border text-muted hover:text-text-primary'}`}
+              title="Toggle Thermal Concentration Map"
+            >
+              <span className={`w-2 h-2 rounded-full ${showDebrisHeatmap ? 'bg-red-500 animate-pulse' : 'bg-white/20'}`} />
+              <span>{showDebrisHeatmap ? 'Thermal Map ON' : 'Thermal Map OFF'}</span>
+            </button>
+
             {viewMode === 'satellites' && issPosition && (
               <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-panel border border-border shadow-lg">
                 <div className="w-1.5 h-1.5 rounded-full bg-cyan animate-pulse" />
@@ -1355,6 +1649,9 @@ export default function GlobeMap({ className = '', mobileView = 'map', showChrom
           )}
         </div>
       )}
+
+      {/* Debris Heatmap Legend */}
+      {showDebrisHeatmap && <HeatmapLegend hotspots={DEBRIS_HOTSPOTS} />}
 
       {/* Atmospheric Vignette Overlay */}
       <div 

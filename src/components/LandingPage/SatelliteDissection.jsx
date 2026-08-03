@@ -190,7 +190,7 @@ export default function SatelliteDissection() {
               </div>
 
               <span className="text-[10px] tracking-[0.3em] uppercase text-cyan-400/80 mb-2 font-bold animate-pulse">
-                INITIALIZING CELESTIAL EYE DATA...
+                INITIALIZING ORBITWATCH DATA...
               </span>
               
               {/* Progress bar */}

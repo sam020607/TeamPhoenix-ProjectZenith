@@ -22,17 +22,17 @@ export default function AboutUs({ onBack }) {
         <div className="flex items-center gap-4 mb-8 text-cyan">
           <Satellite size={48} />
           <h1 className="text-4xl md:text-6xl font-playfair tracking-wide text-white font-semibold">
-            Project Zenith
+            OrbitWatch
           </h1>
         </div>
 
         <h2 className="text-xl md:text-2xl font-sans tracking-[0.25em] uppercase text-white/60 font-semibold mb-12">
-          The Celestial Eye
+          Orbit Watch
         </h2>
 
         <div className="space-y-8 text-lg text-white/80 leading-relaxed font-light">
           <p>
-            Project Zenith began with a simple question: What if anyone, anywhere could look up and know exactly what was traversing the silent void above them?
+            OrbitWatch began with a simple question: What if anyone, anywhere could look up and know exactly what was traversing the silent void above them?
           </p>
           <p>
             Our mission is to democratize orbital awareness. By combining real-time, high-precision orbital element data (TLEs) with advanced client-side mathematical propagation models, we have built a tool that translates the complex choreography of thousands of satellites into an intuitive, accessible interface.
@@ -41,12 +41,12 @@ export default function AboutUs({ onBack }) {
             We do not rely on generalized path approximations or delayed tracking feeds. When you use OrbitWatch, you are seeing active, real-time calculations that compute the exact altitude, velocity, and trajectory of spacecraft relative to your physical location on Earth.
           </p>
           <p>
-            Whether you are an amateur astronomer tracking the International Space Station, a researcher monitoring global communications constellations, or simply someone who finds wonder in the night sky, Project Zenith is your personal window into the orbital sphere.
+            Whether you are an amateur astronomer tracking the International Space Station, a researcher monitoring global communications constellations, or simply someone who finds wonder in the night sky, OrbitWatch is your personal window into the orbital sphere.
           </p>
         </div>
 
         <div className="mt-24 pt-8 border-t border-white/10 text-center text-sm text-white/40 uppercase tracking-widest">
-          Curated by Project Zenith © {new Date().getFullYear()}
+          Curated by OrbitWatch © {new Date().getFullYear()}
         </div>
       </motion.div>
     </div>

@@ -155,7 +155,7 @@ export default function LoadingScreen({ onComplete }) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2, duration: 0.6 }}
               >
-                Project <span className="text-cyan">Zenith</span>
+                Orbit<span className="text-cyan">Watch</span>
               </motion.h1>
               <motion.p
                 className="font-sans text-[10px] uppercase tracking-[0.3em] text-white/30"
@@ -163,7 +163,7 @@ export default function LoadingScreen({ onComplete }) {
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.5, duration: 0.6 }}
               >
-                The Celestial Eye
+                Observatory Control Room
               </motion.p>
             </div>
 

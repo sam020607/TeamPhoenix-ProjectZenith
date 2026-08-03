@@ -58,22 +58,22 @@ const MoonSphere = ({ illumination, phaseName }) => {
       // Sample the photorealistic diffuse map
       vec4 texColor = texture2D(uColorMap, vUv);
       vec3 normal = normalize(vNormal);
-      
-      // Calculate phase angle from illumination percentage
-      // Illumination is 0.0 (New) to 1.0 (Full)
-      float phaseAngle = acos(2.0 * uIllumination - 1.0);
-      
       vec3 sunDir = normalize(uSunDirection);
       
-      // Lighting calculation based on precise angle
+      // Calculate dot product lighting
       float lighting = dot(normal, sunDir);
       
-      // Terminator line calculation
-      // The sharp/smoothstep boundary defines the unlit and lit portions of the sphere.
-      float terminator = smoothstep(-0.05, 0.05, lighting - cos(phaseAngle));
+      // Correct threshold for illuminated percentage (uIllumination is 0.0 to 1.0)
+      // 0.0 (New Moon) -> limit = 1.0 (0% lit)
+      // 0.5 (Quarter Moon) -> limit = 0.0 (50% lit)
+      // 1.0 (Full Moon) -> limit = -1.0 (100% lit)
+      float limit = 1.0 - 2.0 * uIllumination;
+      
+      // Smooth terminator line transition
+      float terminator = smoothstep(-0.06, 0.06, lighting - limit);
       
       // Earthshine (faint bluish-gray light reflecting off Earth onto the moon's dark side)
-      vec3 earthshine = texColor.rgb * vec3(0.12, 0.15, 0.22) * (1.0 - terminator) * 0.4;
+      vec3 earthshine = texColor.rgb * vec3(0.12, 0.15, 0.22) * (1.0 - terminator) * 0.45;
       
       // Direct sunlight with warm realistic lunar surface lighting
       vec3 sunLight = texColor.rgb * vec3(1.0, 0.98, 0.95) * terminator;
@@ -82,7 +82,6 @@ const MoonSphere = ({ illumination, phaseName }) => {
       vec3 finalColor = sunLight + earthshine;
       
       // Subtle atmospheric glow/halo at the edges (Fresnel effect) 
-      // Most visible during crescent phases to simulate scattered light
       float fresnel = pow(1.0 - max(dot(normal, vec3(0.0, 0.0, 1.0)), 0.0), 3.0);
       vec3 glow = vec3(0.7, 0.8, 1.0) * fresnel * (1.0 - uIllumination) * 0.2;
       

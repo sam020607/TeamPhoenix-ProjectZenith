@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, Globe, Music2, Facebook, Twitter, Youtube, Instagram, Github, Linkedin } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import { MapPin, Globe, Music2, Facebook, Twitter, Youtube, Instagram, Github, Linkedin, ShieldAlert, Satellite } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap, Circle, FeatureGroup } from 'react-leaflet';
 import L from 'leaflet';
 import { reverseGeocode } from '../../api/geocodeApi.js';
 import { FadeUp } from '../ui/FadeUp.jsx';
@@ -13,6 +13,17 @@ import { Skiper30 } from '../ui/skiper-30.tsx';
 import StringTune, { StringProgress, StringMagnetic } from '@fiddle-digital/string-tune';
 import { useApp } from '../../context/AppContext.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
+
+const DEBRIS_HOTSPOTS = [
+  { lat: 78.0, lon: 102.0, intensity: 0.8, radius: 15 },
+  { lat: 55.0, lon: -40.0, intensity: 0.6, radius: 12 },
+  { lat: 35.0, lon: 140.0, intensity: 0.7, radius: 14 },
+  { lat: 28.0, lon: -80.0, intensity: 0.55, radius: 10 },
+  { lat: -45.0, lon: -120.0, intensity: 0.45, radius: 11 },
+  { lat: 0.0, lon: -75.0, intensity: 0.5, radius: 8 },
+  { lat: 65.0, lon: -150.0, intensity: 0.65, radius: 13 },
+  { lat: -70.0, lon: 45.0, intensity: 0.5, radius: 10 }
+];
 
 const VAPORIZE_TEXTS = [
   "Know what's\noverhead.", 
@@ -118,6 +129,7 @@ export default function LandingPage({ onLocationSet, onNavigateAbout }) {
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [method, setMethod] = useState('search'); // 'search' | 'globe'
+  const [landingMode, setLandingMode] = useState('simple'); // 'simple' | 'debris'
   const [clickedCoords, setClickedCoords] = useState(null); // { lat, lon }
   const [resolvingName, setResolvingName] = useState(false);
   const [resolvedName, setResolvedName] = useState('');
@@ -172,6 +184,7 @@ export default function LandingPage({ onLocationSet, onNavigateAbout }) {
   }, []);
 
   function handleLocationSelect(location) {
+    localStorage.setItem('orbitwatch_landing_mode', landingMode);
     actions.setLocation(location);
     actions.setLocationName(location.name);
     onLocationSet(location);
@@ -237,8 +250,9 @@ export default function LandingPage({ onLocationSet, onNavigateAbout }) {
       {/* Floating Header */}
       <header className="absolute top-0 left-0 right-0 h-16 flex items-center justify-between px-6 z-30 pointer-events-none">
         <div className="flex items-center gap-2 pointer-events-auto">
-          <span className="font-sans text-[10px] font-bold tracking-[0.3em] uppercase text-[var(--text-secondary)] select-none">
-            ORBITWATCH // PROJ_ZENITH
+          <span className="font-['Dancing_Script',cursive] text-2xl font-bold text-white select-none flex items-center gap-1.5 drop-shadow-[0_0_12px_rgba(77,141,255,0.6)]">
+            <span className="text-cyan">Orbit</span>Watch
+            <span className="text-[9px] font-sans font-medium text-muted tracking-widest pl-1.5 border-l border-white/15 not-italic uppercase">// PROJ_ZENITH</span>
           </span>
         </div>
         <div className="pointer-events-auto">
@@ -306,16 +320,40 @@ export default function LandingPage({ onLocationSet, onNavigateAbout }) {
             </div>
             
             {/* Static Subtitle always present below the vaporize title */}
-            <p className="text-white font-mono text-[10px] md:text-xs uppercase tracking-[0.25em] font-semibold mt-2 md:mt-4 animate-fade-in flex items-center justify-center gap-2">
-              <span className="text-cyan">Project Zenith</span>
-              <span className="text-white/30">•</span>
-              <span className="text-white/70 font-light">The Celestial Eye</span>
+            <p className="mt-2 md:mt-3 animate-fade-in flex items-center justify-center gap-2">
+              <span className={landingMode === 'debris' 
+                ? 'font-sans text-xs md:text-sm font-bold uppercase tracking-[0.3em] text-red-400 drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]' 
+                : 'font-[\'Dancing_Script\',cursive] text-2xl md:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-white to-blue-300 drop-shadow-[0_0_16px_rgba(77,141,255,0.8)]'}>
+                {landingMode === 'debris' ? 'DEBRIS MONITOR ACTIVE' : 'OrbitWatch'}
+              </span>
             </p>
 
             <p className="text-[var(--text-secondary)] text-xs md:text-sm font-light max-w-md mx-auto mt-1.5 md:mt-2 animate-fade-in opacity-80">
-              Real-time satellite tracking &amp; personal sky visibility — anywhere on Earth
+              {landingMode === 'debris' 
+                ? 'Global Space Debris, Collision Alerts & Reentry Simulator' 
+                : 'Real-time satellite tracking & personal sky visibility — anywhere on Earth'}
             </p>
           </motion.div>
+
+          {/* Mode Switcher */}
+          <div className="relative flex bg-[var(--surface)] border border-[var(--surface-border)] rounded-full p-1 mb-4 z-20">
+            <button
+              onClick={() => setLandingMode('simple')}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-sans font-semibold transition-all cursor-pointer bg-transparent border-none"
+              style={landingMode === 'simple' ? { backgroundColor: 'var(--text-primary)', color: 'var(--bg)' } : { color: 'var(--text-secondary)' }}
+            >
+              <Satellite className="w-3.5 h-3.5" />
+              <span>Simple Tracking</span>
+            </button>
+            <button
+              onClick={() => setLandingMode('debris')}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-sans font-semibold transition-all cursor-pointer bg-transparent border-none"
+              style={landingMode === 'debris' ? { backgroundColor: '#ef4444', color: '#ffffff' } : { color: 'var(--text-secondary)' }}
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+              <span>Debris Monitor</span>
+            </button>
+          </div>
 
           {/* Selection Method Tabs */}
           <motion.div
@@ -457,6 +495,23 @@ export default function LandingPage({ onLocationSet, onNavigateAbout }) {
                     <GlobeController onInteraction={() => setIsRotating(false)} isRotating={isRotating} />
                     {clickedCoords && (
                       <Marker position={[clickedCoords.lat, clickedCoords.lon]} icon={locatorIcon} />
+                    )}
+                    {landingMode === 'debris' && (
+                      <FeatureGroup>
+                        {DEBRIS_HOTSPOTS.map((hotspot, idx) => (
+                          <Circle
+                            key={`landing-heat-${idx}`}
+                            center={[hotspot.lat, hotspot.lon]}
+                            radius={hotspot.radius * 75000}
+                            pathOptions={{
+                              color: '#ef4444',
+                              fillColor: '#ef4444',
+                              fillOpacity: hotspot.intensity * 0.35,
+                              stroke: false
+                            }}
+                          />
+                        ))}
+                      </FeatureGroup>
                     )}
                   </MapContainer>
                 </div>
@@ -672,7 +727,7 @@ export default function LandingPage({ onLocationSet, onNavigateAbout }) {
               className="w-full lg:w-[53%] mt-2"
             >
               <p className="text-[15px] md:text-[16px] text-[var(--text-secondary)] leading-[1.65] font-sans">
-                Every satellite tracked by Project Zenith uses real-time, high-precision orbital element data (TLEs) fetched directly from global ephemeris networks. Rather than rendering generalized path approximations, the platform runs active mathematical calculations to compute the exact position, altitude, and velocity of each spacecraft relative to your coordinates. What you witness on your screen is not just a mockup—it is the actual object's actual position in real time as it orbits the Earth.
+                Every satellite tracked by OrbitWatch uses real-time, high-precision orbital element data (TLEs) fetched directly from global ephemeris networks. Rather than rendering generalized path approximations, the platform runs active mathematical calculations to compute the exact position, altitude, and velocity of each spacecraft relative to your coordinates. What you witness on your screen is not just a mockup—it is the actual object's actual position in real time as it orbits the Earth.
               </p>
             </motion.div>
           </div>
@@ -700,7 +755,7 @@ export default function LandingPage({ onLocationSet, onNavigateAbout }) {
                   <span className="text-xl font-medium tracking-wide">TEAM PHOENIX</span>
                 </div>
                 <p className="text-sm leading-relaxed max-w-sm">
-                  Project Zenith: The Celestial Eye. Real-time satellite tracking & personal sky visibility — anywhere on Earth. Brought to you by Team Phoenix.
+                  OrbitWatch. Real-time satellite tracking & personal sky visibility — anywhere on Earth. Brought to you by Team Phoenix.
                 </p>
               </div>
 
@@ -746,7 +801,7 @@ export default function LandingPage({ onLocationSet, onNavigateAbout }) {
             </div>
 
             <div className="pt-6 border-t border-white/10 flex items-center justify-center">
-              <p className="text-[10px] uppercase tracking-widest opacity-40">© {new Date().getFullYear()} Team Phoenix · Project Zenith</p>
+              <p className="text-[10px] uppercase tracking-widest opacity-40">© {new Date().getFullYear()} Team Phoenix · OrbitWatch</p>
             </div>
           </motion.footer>
         </div>

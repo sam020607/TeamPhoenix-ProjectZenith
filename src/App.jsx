@@ -5,6 +5,7 @@ import { AppProvider, useApp } from './context/AppContext.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import LandingPage from './components/LandingPage/LandingPage.jsx';
 import Dashboard from './components/Dashboard/Dashboard.jsx';
+import DebrisDashboard from './components/Dashboard/DebrisDashboard.jsx';
 import AuthPage from './components/Auth/AuthPage.jsx';
 import OnboardingBriefing from './components/Onboarding/OnboardingBriefing.jsx';
 import AboutUs from './components/AboutUs.jsx';
@@ -13,15 +14,20 @@ import LoadingScreen from './components/LoadingScreen/LoadingScreen.jsx';
 function AppInner() {
   const { user, loading, showAuthModal, setShowAuthModal } = useAuth();
   const { state } = useApp();
-  const [appState, setAppState] = useState('landing'); // 'landing' | 'dashboard' | 'about'
+  const [appState, setAppState] = useState('landing'); // 'landing' | 'dashboard' | 'debris-dashboard' | 'about'
   const [showBriefing, setShowBriefing] = useState(false);
 
   // Route depending on user briefing status
   const handleLocationSet = () => {
+    const landingMode = localStorage.getItem('orbitwatch_landing_mode');
     const isBriefed = localStorage.getItem('orbitwatch_briefed') === 'true';
-    setAppState('dashboard');
-    if (!isBriefed) {
-      setShowBriefing(true);
+    if (landingMode === 'debris') {
+      setAppState('debris-dashboard');
+    } else {
+      setAppState('dashboard');
+      if (!isBriefed) {
+        setShowBriefing(true);
+      }
     }
   };
 
@@ -37,7 +43,7 @@ function AppInner() {
 
   // Sync state if location is cleared externally
   useEffect(() => {
-    if (!state.location && appState === 'dashboard') {
+    if (!state.location && (appState === 'dashboard' || appState === 'debris-dashboard')) {
       setAppState('landing');
       setShowBriefing(false);
     }
@@ -87,6 +93,18 @@ function AppInner() {
             className={`w-full h-full ${showBriefing ? 'hidden pointer-events-none' : ''}`}
           >
             <Dashboard onReset={handleReset} />
+          </motion.div>
+        )}
+        {appState === 'debris-dashboard' && (
+          <motion.div
+            key="debris-dashboard"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4 }}
+            className="w-full h-full"
+          >
+            <DebrisDashboard onReset={handleReset} />
           </motion.div>
         )}
         {appState === 'about' && (

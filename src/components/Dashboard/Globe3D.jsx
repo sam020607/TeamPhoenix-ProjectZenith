@@ -10,6 +10,32 @@ import worldData from '../../data/world.json';
 import { reverseGeocode } from '../../api/geocodeApi.js';
 import { MapPin, Globe, Loader2, SlidersHorizontal, X } from 'lucide-react';
 
+// Expanded debris hotspot catalogue — synced with GlobeMap.jsx
+const DEBRIS_HOTSPOTS = [
+  // Polar belt — heavy traffic from Earth-obs & recon sats
+  { lat: 80.5, lon: 95.0,   intensity: 0.92, radius: 18, label: 'Polar LEO Belt',       color: [255,  40,  40] },
+  { lat: 73.0, lon: -15.0,  intensity: 0.75, radius: 14, label: 'Arctic Crossing',       color: [255,  80,  20] },
+  { lat: -82.0, lon: 55.0,  intensity: 0.70, radius: 14, label: 'Antarctic Corridor',    color: [255,  80,  20] },
+  // Sun-synchronous corridor — Fengyun 1C debris field
+  { lat: 55.0, lon:  90.0,  intensity: 0.88, radius: 20, label: 'FY-1C Debris Field',    color: [255,  30,  30] },
+  { lat: 45.0, lon: 125.0,  intensity: 0.65, radius: 13, label: 'SSO Cascade Zone',      color: [255, 120,  10] },
+  { lat: 35.0, lon: 145.0,  intensity: 0.72, radius: 15, label: 'Japan Launch Track',    color: [255,  90,  10] },
+  // Mid-inclination cluster — Cosmos 2251 collision belt
+  { lat: 51.0, lon: -80.0,  intensity: 0.85, radius: 16, label: 'Cosmos-2251 Cloud',     color: [255,  30,  30] },
+  { lat: 48.0, lon:  35.0,  intensity: 0.60, radius: 12, label: 'Baikonur Uprange',      color: [255, 140,   0] },
+  { lat: 28.5, lon: -80.5,  intensity: 0.58, radius: 11, label: 'KSC Launch Corridor',   color: [255, 160,  20] },
+  // Equatorial / GEO graveyard approach
+  { lat:  5.0, lon: -75.0,  intensity: 0.50, radius:  9, label: 'GTO Crossing Band',     color: [255, 200,  30] },
+  { lat: -5.0, lon: 110.0,  intensity: 0.48, radius:  9, label: 'SEA Equatorial Band',   color: [255, 200,  30] },
+  // Southern hemisphere dense zones
+  { lat: -48.0, lon: -120.0,intensity: 0.55, radius: 11, label: 'South Pacific Zone',    color: [255, 130,  15] },
+  { lat: -35.0, lon:  20.0, intensity: 0.42, radius:  9, label: 'Southern Polar Rim',    color: [255, 200,  40] },
+  // Supplementary secondary clusters
+  { lat: 62.0, lon: -150.0, intensity: 0.68, radius: 13, label: 'Alaska Overpass',       color: [255, 100,  10] },
+  { lat: 20.0, lon:  60.0,  intensity: 0.44, radius:  8, label: 'Arabian Corridor',      color: [255, 220,  50] },
+  { lat: -22.0, lon: -45.0, intensity: 0.38, radius:  8, label: 'Brazil Downrange',      color: [255, 230,  60] },
+];
+
 /**
  * Animated ISS marker — renders an HTML billboard dot that pulses and animates exactly like the flat map.
  */
@@ -385,7 +411,8 @@ function SceneContent({ isRelocating, setIsRelocating, isResolving, setIsResolvi
     selectedConstellation,
     asteroids = [],
     selectedAsteroid,
-    asteroidFilter
+    asteroidFilter,
+    showDebrisHeatmap
   } = state;
 
   const earthRef = useRef();
@@ -519,6 +546,17 @@ function SceneContent({ isRelocating, setIsRelocating, isResolving, setIsResolvi
   const orbitPoints = useMemo(() => {
     if (viewMode !== 'satellites' || !selectedSatellite) return [];
     const arcPoints = generateOrbitalArc(selectedSatellite.satlat, selectedSatellite.satlon);
+    
+    if (selectedSatellite.isDecaying) {
+      const baseRadius = EARTH_RADIUS + (selectedSatellite.satalt / 40000) * 0.4 + 0.05;
+      return arcPoints.map((p, idx) => {
+        const progress = idx / arcPoints.length; // 0 to 1
+        const decayAmount = progress * (selectedSatellite.decayDepth || 0.15);
+        const radius = Math.max(EARTH_RADIUS + 0.01, baseRadius - decayAmount);
+        return latLonToVector3(p[0], p[1], radius);
+      });
+    }
+
     const radius = EARTH_RADIUS + (selectedSatellite.satalt / 40000) * 0.4 + 0.05;
     return arcPoints.map(p => latLonToVector3(p[0], p[1], radius));
   }, [viewMode, selectedSatellite]);
@@ -529,6 +567,24 @@ function SceneContent({ isRelocating, setIsRelocating, isResolving, setIsResolvi
     const arcPoints = generateOrbitalArc(issPosition.lat, issPosition.lon);
     return arcPoints.map(p => latLonToVector3(p[0], p[1], EARTH_RADIUS + 0.15));
   }, [viewMode, issPosition]);
+
+  // Convert Debris Heatmap Hotspots to 3D
+  const heatmapHotspots3D = useMemo(() => {
+    return DEBRIS_HOTSPOTS.map(h => {
+      const [r, g, b] = h.color;
+      return {
+        position: latLonToVector3(h.lat, h.lon, EARTH_RADIUS + 0.002),
+        // 3 layered sizes: outer diffuse, mid glow, inner core
+        layers: [
+          { size: h.radius * 0.042, opacity: h.intensity * 0.06 },
+          { size: h.radius * 0.024, opacity: h.intensity * 0.14 },
+          { size: h.radius * 0.012, opacity: h.intensity * 0.32 },
+        ],
+        color: new THREE.Color(r / 255, g / 255, b / 255),
+        intensity: h.intensity,
+      };
+    });
+  }, []);
 
   // Slow orbital rotation effect for background stars and earth grids (idle rotation)
   useFrame(({ clock }) => {
@@ -596,6 +652,21 @@ function SceneContent({ isRelocating, setIsRelocating, isResolving, setIsResolvi
         <primitive object={glowMaterial} attach="material" />
       </mesh>
 
+      {/* ── Atmospheric Reentry Hazard Zone (Decay Simulation) ── */}
+      {selectedSatellite?.isDecaying && (
+        <mesh raycast={() => null}>
+          <sphereGeometry args={[EARTH_RADIUS + 0.08, 64, 64]} />
+          <meshBasicMaterial 
+            color="#ef4444" 
+            transparent={true} 
+            opacity={0.12} 
+            blending={THREE.AdditiveBlending} 
+            side={THREE.BackSide}
+            wireframe
+          />
+        </mesh>
+      )}
+
       {/* ── Earth Base Globe ── */}
       <Suspense fallback={<FallbackEarth onClick={handleEarthClick} />}>
         <EarthMesh onClick={handleEarthClick} />
@@ -616,6 +687,22 @@ function SceneContent({ isRelocating, setIsRelocating, isResolving, setIsResolvi
           opacity={0.04}
         />
       </mesh>
+
+      {/* ── Debris Density Heatmap Domes — layered for Gaussian glow effect ── */}
+      {showDebrisHeatmap && heatmapHotspots3D.map((hotspot, idx) =>
+        hotspot.layers.map((layer, li) => (
+          <mesh key={`debris-heat-${idx}-${li}`} position={hotspot.position} raycast={() => null}>
+            <sphereGeometry args={[layer.size, 14, 14]} />
+            <meshBasicMaterial
+              color={hotspot.color}
+              transparent={true}
+              opacity={layer.opacity}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+        ))
+      )}
 
       {/* ── Observer Pin — Html billboard, pixel-perfect match to flat map ring ── */}
       {observerPos && (
@@ -703,6 +790,36 @@ function SceneContent({ isRelocating, setIsRelocating, isResolving, setIsResolvi
               />
             );
           })}
+
+          {/* Explicit selected satellite marker if it is a mock/decay satellite not present in the standard API list */}
+          {selectedSatellite && !filteredSatellites.some(s => s.satid === selectedSatellite.satid) && (
+            (() => {
+              const radius = EARTH_RADIUS + (selectedSatellite.satalt / 40000) * 0.4 + 0.05;
+              const satPos = latLonToVector3(selectedSatellite.satlat, selectedSatellite.satlon, radius);
+              const color = selectedSatellite.isDecaying ? '#ef4444' : getObjectColor(selectedSatellite.type, selectedSatellite.satname);
+              
+              return (
+                <>
+                  <GlowDot
+                    position={satPos}
+                    color="#ffffff"
+                    glowColor={color}
+                    size={0.035}
+                    outerSize={0.075}
+                    innerOpacity={0.7}
+                    outerOpacity={0.3}
+                  />
+                  <group position={satPos}>
+                    <Html distanceFactor={6}>
+                      <div className="bg-surface/90 border border-white/20 rounded px-2 py-1 text-[9px] text-text-primary font-sans font-bold uppercase tracking-wider select-none whitespace-nowrap -translate-x-1/2 -translate-y-6 pointer-events-none shadow-xl backdrop-blur">
+                        🚨 {selectedSatellite.satname}
+                      </div>
+                    </Html>
+                  </group>
+                </>
+              );
+            })()
+          )}
         </>
       )}
 

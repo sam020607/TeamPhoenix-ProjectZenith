@@ -46,7 +46,7 @@ export default function OnboardingBriefing({ onComplete, observerLocation }) {
       title: "01 / BASE CALIBRATION",
       subtitle: "OBSERVER STATION CONFIGURATION",
       icon: <Compass className="w-5 h-5 text-cyan" />,
-      description: "Welcome to Project Zenith Control Terminal. Your observation coordinate profile is locked in. The Reset Session button (white circle at sidebar bottom) allows you to clear the current coordinates and recalibrate to a new location at any time.",
+      description: "Welcome to OrbitWatch Control Terminal. Your observation coordinate profile is locked in. The Reset Session button (white circle at sidebar bottom) allows you to clear the current coordinates and recalibrate to a new location at any time.",
       widget: (
         <div className="relative w-full h-40 flex flex-col items-center justify-center bg-black/40 rounded-xl border border-white/5 overflow-hidden">
           {/* Pulsing radar lines */}

@@ -176,6 +176,7 @@ const initialState = {
   asteroids: [],            // Array of asteroid objects
   selectedAsteroid: null,   // Currently selected asteroid
   asteroidFilter: 'all',    // 'all' | 'phas' | 'close'
+  showDebrisHeatmap: false,
 
   // Spotting Log & Achievements Gamification
   observedLog: loadObservedLog(),
@@ -296,6 +297,9 @@ function appReducer(state, action) {
     case 'SET_SHOW_MAP_DETAIL_CARD':
       return { ...state, showMapDetailCard: action.payload };
 
+    case 'TOGGLE_DEBRIS_HEATMAP':
+      return { ...state, showDebrisHeatmap: !state.showDebrisHeatmap };
+
     case 'SET_APOD_DATA':
       return { ...state, apodData: action.payload };
 
@@ -339,6 +343,7 @@ export function AppProvider({ children }) {
     deleteObservation: (id) => dispatch({ type: 'DELETE_OBSERVATION', payload: id }),
     dismissAchievementToast: () => dispatch({ type: 'DISMISS_ACHIEVEMENT_TOAST' }),
     setShowMapDetailCard: (v) => dispatch({ type: 'SET_SHOW_MAP_DETAIL_CARD', payload: v }),
+    toggleDebrisHeatmap: () => dispatch({ type: 'TOGGLE_DEBRIS_HEATMAP' }),
     setApodData: (data) => dispatch({ type: 'SET_APOD_DATA', payload: data }),
     reset: () => dispatch({ type: 'RESET' }),
   }), [dispatch]);

@@ -18,10 +18,11 @@ import DiagnosticsPanel from './DiagnosticsPanel.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
 import AIAssistant from './AIAssistant.jsx';
 import SatelliteBattles from '../../features/satellite-battles/SatelliteBattles.jsx';
+import HazardsPanel from '../HazardsPanel/HazardsPanel.jsx';
 import { CONSTELLATIONS, getLocalCoordinates } from '../../data/constellations.js';
 import {
   Map, List, Star, Compass, Radio, RotateCcw,
-  Eye, EyeOff, Satellite, Settings, ChevronLeft, ChevronRight, Globe, Trophy, Activity, Flame, Moon, Zap, LogOut, X
+  Eye, EyeOff, Satellite, Settings, ChevronLeft, ChevronRight, Globe, Trophy, Activity, Flame, Moon, Zap, LogOut, X, ShieldAlert
 } from 'lucide-react';
 
 /** User avatar + sign-out dropdown shown in the top navigation bar */
@@ -119,10 +120,10 @@ const MOBILE_VIEWS = [
   { id: 'map', label: 'Map', icon: Map },
   { id: 'satellites', label: 'Objects', icon: Satellite },
   { id: 'battles', label: 'Battles', icon: Flame },
+  { id: 'hazards', label: 'Hazards', icon: ShieldAlert },
   { id: 'lookup', label: 'Look Up', icon: Compass },
   { id: 'report', label: 'Tonight', icon: Star },
   { id: 'journal', label: 'Journal', icon: Trophy },
-  { id: 'diagnostics', label: 'Diags', icon: Activity },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -151,6 +152,7 @@ const RIGHT_PANEL_HEADERS = {
   objects: { label: "Overhead Objects", icon: Satellite },
   countdown: { label: "Next ISS Pass", icon: Radio },
   battles: { label: "Satellite Battles", icon: Flame },
+  hazards: { label: "Space Hazards", icon: ShieldAlert },
   lookup: { label: "Look Up Tracker", icon: Compass },
   report: { label: "Tonight's Sky", icon: Star },
   journal: { label: "Observer Journal", icon: Trophy },
@@ -222,6 +224,7 @@ export default function Dashboard({ onReset }) {
     else if (id === 'journal') navId = 'journal';
     else if (id === 'diagnostics') navId = 'diagnostics';
     else if (id === 'settings') navId = 'settings';
+    else if (id === 'hazards') navId = 'hazards';
     else if (id === 'map') navId = 'objects';
 
     setActiveNav(navId);
@@ -394,8 +397,12 @@ export default function Dashboard({ onReset }) {
   // Sync rightPanel based on selection state and activeNav
   useEffect(() => {
     if (hasSelectedObject) {
-      setRightPanel('lookup');
-      setRightPanelOpen(true);
+      if (activeNav === 'hazards') {
+        setRightPanel('hazards');
+      } else {
+        setRightPanel('lookup');
+        setRightPanelOpen(true);
+      }
     } else {
       setRightPanel(activeNav);
     }
@@ -403,10 +410,10 @@ export default function Dashboard({ onReset }) {
 
   // For mobile: auto-transition view to lookup details when an object is selected
   useEffect(() => {
-    if (hasSelectedObject) {
+    if (hasSelectedObject && activeNav !== 'hazards') {
       setMobileView('lookup');
     }
-  }, [hasSelectedObject]);
+  }, [hasSelectedObject, activeNav]);
 
   // Compute active count for the objects panel header dynamically
   const objectsCount = useMemo(() => {
@@ -473,7 +480,7 @@ export default function Dashboard({ onReset }) {
             <Satellite className="w-5 h-5 text-cyan shrink-0 animate-pulse" />
             {!isCollapsed && (
               <div className="flex flex-col min-w-0 transition-opacity duration-200">
-                <span className="font-playfair italic text-[15px] font-bold text-text truncate leading-tight">Project Zenith</span>
+                <span className="font-playfair italic text-[15px] font-bold text-text truncate leading-tight">OrbitWatch</span>
                 <span className="text-[8px] font-sans uppercase tracking-[0.15em] text-muted truncate">Control Room</span>
               </div>
             )}
@@ -1027,6 +1034,7 @@ export default function Dashboard({ onReset }) {
                 <div className="flex items-center gap-2">
                   {mobileView === 'satellites' && <Satellite className="w-4 h-4 text-cyan" />}
                   {mobileView === 'report' && <Star className="w-4 h-4 text-cyan" />}
+                  {mobileView === 'hazards' && <ShieldAlert className="w-4 h-4 text-cyan" />}
                   {mobileView === 'journal' && <Trophy className="w-4 h-4 text-cyan" />}
                   {mobileView === 'lookup' && <Compass className="w-4 h-4 text-cyan" />}
                   {mobileView === 'diagnostics' && <Activity className="w-4 h-4 text-cyan" />}
@@ -1034,6 +1042,7 @@ export default function Dashboard({ onReset }) {
                   <span className="font-playfair italic text-xs font-bold text-text-primary uppercase tracking-wider">
                     {mobileView === 'satellites' && 'Telemetry List'}
                     {mobileView === 'report' && 'Tonight\'s Sky'}
+                    {mobileView === 'hazards' && 'Space Hazards'}
                     {mobileView === 'journal' && 'Sky Record Book'}
                     {mobileView === 'lookup' && 'Look Up Details'}
                     {mobileView === 'diagnostics' && 'System Diagnostics'}

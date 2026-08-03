@@ -35,7 +35,7 @@ export default function AIAssistant({ showChrome = true }) {
   const [messages, setMessages] = useState([
     {
       role: 'model',
-      content: "System initialized. I am your Project Zenith onboard AI assistant. How can I help you analyze the skies today?",
+      content: "System initialized. I am your OrbitWatch onboard AI assistant. How can I help you analyze the skies today?",
       timestamp: new Date()
     }
   ]);
@@ -86,7 +86,7 @@ export default function AIAssistant({ showChrome = true }) {
       `- ${s.satname} (NORAD: ${s.satid}, Type: ${s.type}, Altitude: ${s.satalt.toFixed(1)} km, Vel: ${s.velocity.toFixed(2)} km/s)`
     ).join('\n');
 
-    return `You are AURA — the Astronomical Universal Reconnaissance Assistant (Project Zenith onboard AI Assistant).
+    return `You are AURA — the Astronomical Universal Reconnaissance Assistant (OrbitWatch onboard AI Assistant).
 You assist operators in a satellite tracking control room. 
 
 Here is the CURRENT REAL-TIME TELEMETRY STATE of the control room:
