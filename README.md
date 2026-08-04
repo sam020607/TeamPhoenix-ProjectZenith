@@ -1,6 +1,6 @@
-# Project Zenith — The Celestial Eye
+# OrbitWatch
 
-> A real-time satellite tracking and space intelligence dashboard built by **Team Phoenix** for **AstralWeb Innovate Hackathon**, organized by **AARUSH**.
+> A real-time satellite tracking and space intelligence dashboard built by **Team Phoenix**
 
 ![Project Zenith](public/images/top100/heic1501a.webp)
 
